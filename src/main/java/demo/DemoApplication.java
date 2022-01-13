@@ -1,81 +1,63 @@
 package demo;
 
-import javax.swing.JFrame;
-import javax.swing.JTree;
-import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.DefaultTreeModel;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
-import demo.entity.Company;
-import demo.entity.Employee;
-import demo.entity.Vacation;
-import demo.repository.CompanyRepository;
-import demo.repository.EmployeeRepository;
-import demo.repository.VacationRepository;
+import java.security.*;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Scanner;
+import demo.entity.User;
+import demo.repository.UserRepository;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.data.jdbc.repository.config.EnableJdbcRepositories;
-import org.yaml.snakeyaml.nodes.Node;
+
 
 @SpringBootApplication
 @EnableJdbcRepositories
 public class DemoApplication {
 
-  private JTree tree;
-
   public static void main(String[] args) {
     ConfigurableApplicationContext context = SpringApplication.run(DemoApplication.class, args);
+    UserRepository userRepository = context.getBean(UserRepository.class);
 
-    CompanyRepository companyRepository = context.getBean(CompanyRepository.class);
-    EmployeeRepository employeeRepository = context.getBean(EmployeeRepository.class);
-    VacationRepository vacationRepository = context.getBean(VacationRepository.class);
-
-    Map<Company, Map<Employee, List<Vacation>>> result = findAllByCompany(companyRepository, employeeRepository, vacationRepository);
-
-    System.out.println(result);
-    System.setProperty("java.awt.headless", "false");
-    var jFrame = new JFrame();
-    JTree jTree = new JTree();
-    jFrame.add(jTree);
-    DefaultMutableTreeNode root = new DefaultMutableTreeNode("database");
-    DefaultTreeModel model = new DefaultTreeModel(root);
-    for (Map.Entry<Company, Map<Employee, List<Vacation>>> company : result.entrySet()) {
-      DefaultMutableTreeNode oneCompany = new DefaultMutableTreeNode(company.getKey());
-      if (company.getValue() != null) {
-        for (Map.Entry<Employee, List<Vacation>> emp : company.getValue().entrySet()) {
-          DefaultMutableTreeNode oneEmployee = new DefaultMutableTreeNode(emp.getKey());
-          oneCompany.add(oneEmployee);
-          if (emp.getValue() != null) {
-            for(Vacation vacation: emp.getValue()){
-              DefaultMutableTreeNode oneVacation = new DefaultMutableTreeNode(vacation);
-              oneEmployee.add(oneVacation);
+    System.out.println("Окно регистрации\n");
+    int process = 1;
+    while (process != 0) {
+      Scanner scanner = new Scanner(System.in);
+      System.out.println("Введите номер действия: 0 - Выход , 1 - Регистраця, 2 - Вывод данных");
+      process = scanner.nextInt();
+      if (process > -1 && process < 3) {
+        switch (process) {
+          case 1 -> {
+            System.out.println("Введите логин");
+            String login = scanner.next();
+            while (true) {
+              boolean alreadyEx = userRepository.existsByLogin(login);  // проверка есть ли в базе такой login
+              if (!alreadyEx) break;
+              else {
+                System.out.println("Данный логин уже занят, введите новое значение");
+                login = scanner.next();
+              }
             }
+            System.out.println("Введите пароль");
+            String password = scanner.next();
+            SecureRandom random = new SecureRandom();
+            byte[] salt = random.generateSeed(20);
+            password += Arrays.toString(salt);
+            password = String.valueOf(password.hashCode());
+            User user = new User(login, password, Arrays.toString(salt), LocalDateTime.now().toString());
+            userRepository.save(user);
           }
+          case 2 -> {
+            System.out.println("Список пользователей");
+            ArrayList<User> users = (ArrayList<User>) userRepository.findAll();
+            users.forEach(u -> System.out.println(u.toString()));
+            System.out.println();
+          }
+          case 0 -> process = 0;
         }
       }
-      root.add(oneCompany);
     }
-    jTree.setModel(model);
-    jFrame.pack();
-    jFrame.setVisible(true);
-  }
-
-  private static Map<Company, Map<Employee, List<Vacation>>> findAllByCompany(CompanyRepository companyRepository, EmployeeRepository employeeRepository,
-                                                                        VacationRepository vacationRepository) {
-    return StreamSupport.stream(companyRepository.findAll().spliterator(), false)
-      .map(company -> Map.entry(company,
-        findVacationsByEmployee(employeeRepository, vacationRepository, company)))
-      .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-  }
-
-  private static Map<Employee, List<Vacation>> findVacationsByEmployee(EmployeeRepository employeeRepository, VacationRepository vacationRepository,
-                                                                       Company company) {
-    return employeeRepository.findByCompanyId(company.getId().intValue()).stream()
-      .map(employee -> Map.entry(employee, vacationRepository.findByEmployeeId(employee.getId())))
-      .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
   }
 }
